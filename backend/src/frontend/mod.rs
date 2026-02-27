@@ -41,6 +41,6 @@ async fn index_html() -> Response {
 }
 
 async fn not_found() -> Response {
-    (StatusCode::NOT_FOUND, "404").into_response()
+    (StatusCode::NOT_FOUND, "Resource not found, 404").into_response()
 }
 
