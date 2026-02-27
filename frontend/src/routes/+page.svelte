@@ -1,6 +1,6 @@
 <script lang="ts">
     async function fetchData() {
-        const resp = await fetch("/api/data");
+        const resp = await fetch("/api/test");
         return await resp.text();
     }
 </script>
