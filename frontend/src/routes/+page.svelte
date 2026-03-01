@@ -1,7 +1,17 @@
 <script lang="ts">
+    import { TestPayload, DirectRequest } from "$types/api";
+
     async function fetchData() {
         const resp = await fetch("/api/test");
-        return await resp.text();
+        let response = new DirectRequest<TestPayload>( await resp.text() );
+
+        if(response.isOk()) {
+            console.log("happy");
+        } else {
+            console.log("sad");
+        }
+
+        return JSON.stringify(response);
     }
 </script>
 
