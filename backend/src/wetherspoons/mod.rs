@@ -123,3 +123,4 @@ pub async fn get_sales_int(venue_identifier: usize) -> Result<usize, Wetherspoon
     }
 }
 
+// https://ca.jdw-apps.net/api/v0.1/jdw/venues/5600/sales-areas/43/menus
