@@ -1,5 +1,6 @@
 mod frontend;
 mod api;
+mod wetherspoons;
 
 use axum::Router;
 
