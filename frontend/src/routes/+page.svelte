@@ -3,7 +3,7 @@
 
     async function fetchData() {
         const resp = await fetch("/api/test");
-        let response = new DirectRequest<TestPayload>( await resp.text() );
+        let response = new DirectRequest<TestPayload>(await resp.text());
 
         if(response.isOk()) {
             console.log("happy");
