@@ -1,8 +1,44 @@
+use std::{collections::HashMap};
+
 use axum::http::{HeaderMap, HeaderValue};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::wetherspoons::{API_AUTH, API_ENDPOINT, error::WetherspoonsError};
+
+
+static VOLUMES: Lazy<HashMap<&'static str, u32>> = Lazy::new(|| {
+    HashMap::from([
+        ("Pint", 568),
+        ("Half pint", 284),
+        ("Half Pint", 284),
+        ("Half", 284),
+        ("Single", 25),
+        ("Double", 50)
+    ])
+});
+
+static DRINK_CATEGORIES: Lazy<Vec<&str>> = Lazy::new(|| {
+    vec![
+        "Lager, beer, stout and craft | Draught",
+        "Cider | Draught and bottles ",
+        "Real ale",
+        "Craft | Draught, bottles & cans",
+        "World Beers | Bottles",
+        "Premixed drinks",
+        "Wine, prosecco & sparkling",
+        "Spritz cocktails",
+        "Cocktails and BuzzBallz",
+        "Vodka",
+        "Gin",
+        "Rum",
+        "Whiskey",
+        "Tequila",
+        "Liqueurs, cognac and brandy ",
+        "Bombs and shots",
+    ]
+});
 
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -11,22 +47,25 @@ pub struct DrinksMenu {
 }
 
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Drink {
-    name: String,
-    category: String,
-    strength: f32,
-    portions: Vec<Portion>,
+    pub name: String,
+    pub category: String,
+    pub strength: f32,
+    pub portions: Vec<Portion>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Portion {
-    amount: usize, // ml
-    price: usize, // 120 eg is £1.20
-    ppu: f32 // pennies per unit alc
+    pub amount: u32, // ml
+    pub price: f32, // 120 eg is £1.20
+    pub strength: f32, // abv
+    pub ppu: f32 // price (in pence) per unit
 }
 
 
 
-pub async fn get_drinks_menu(venue_identifier: usize, sales_id: usize, drinks_menu_id: usize) -> Result<usize, WetherspoonsError> {
+pub async fn get_drinks_menu(venue_identifier: usize, sales_id: usize, drinks_menu_id: usize) -> Result<Vec<Drink>, WetherspoonsError> {
     let mut headers = HeaderMap::new();
     headers.insert("Authorization", HeaderValue::from_str(API_AUTH).expect("Could insert the auth header"));
     headers.insert("User-Agent", HeaderValue::from_str("Wetherspoons App").expect("Could insert the auth header"));
@@ -53,6 +92,7 @@ pub async fn get_drinks_menu(venue_identifier: usize, sales_id: usize, drinks_me
         }
     };
 
+    // this will be equal to the array of category objs, or return an err
     let categories: Vec<Value> = match menu.data.get("categories") {
         Some(cat) => { 
             match cat.as_array() {
@@ -63,21 +103,345 @@ pub async fn get_drinks_menu(venue_identifier: usize, sales_id: usize, drinks_me
         None => { return Err(WetherspoonsError::ParseDrinksError("Couldn't find drinks categories".to_string())); }
     };
 
-
+    
+    let mut drink_accumulator: Vec<Drink> = vec![];
 
     for category in categories {
-        let name = category.get("name").unwrap_or(&Value::String("unknown".to_string()));
-        
+        let name_fallback = Value::String("Unknown".to_string());
+        let name = category.get("name").unwrap_or(&name_fallback).as_str().unwrap_or("Unknown");
+        if !DRINK_CATEGORIES.contains(&name) { continue; } // ignore drinks outside alcoholic categories
+
         if let None = category.get("itemGroups") {
             return Err(WetherspoonsError::ParseDrinksError("Couldn't find itemGroups in drinks menu".to_string()));
         }
 
-        for item in category.get("itemGroups").expect("The error was caught previously") {
-            // parse each item
+        // This iterates sub-categories, such as Lager, Craft, Ale, etc in the biggest "Draught" category for example
+        for item in category.get("itemGroups").expect("The error was caught previously").as_array().expect("itemGroups wasn't an array") {
+            let sub_category_name = match item.get("name") {
+                Some(value) => {
+                    if value.is_null() {
+                        name // fallback to category name
+                    } else {
+                        value.as_str().unwrap_or(name) // fallback to category name, if required
+                    }
+                }
+                None => { name } // fallback to category name
+            }.to_string();
+
+            drink_accumulator.append(&mut parse_item_list(item.get("items").unwrap().as_array().unwrap().to_vec(), sub_category_name));
         }
     }
 
-    
+    let mut cats: Vec<String> = vec![];
+    for drink in &drink_accumulator {
+        if !cats.contains(&drink.category) {
+            cats.push(drink.category.to_string());
+        }
+    }
 
-    Ok(0)
+    Ok(drink_accumulator.iter().filter(|drink| drink.portions.len() > 0 && drink.strength != 0.).cloned().collect())
+}
+
+
+
+fn parse_item_list(items: Vec<Value>, sub_category_name: String) -> Vec<Drink> {
+    let mut drinks: Vec<Drink> = vec![];
+
+    for item in items {
+        if !is_product(&item) { continue; }
+        if is_out_of_stock(&item) { continue; }
+
+        // get strength of item, or return (probs not alcoholic)
+        let strength: f32 = match extract_abv(&item) {
+            Some(val) => val,
+            None => {
+                #[cfg(debug_assertions)]
+                eprintln!("Couldn't find item ABV, ignoring.");
+                continue;
+            }
+        };
+
+        // get name of item
+        let name = match get_item_name(&item) {
+            Some(name) => name,
+            None => {
+                #[cfg(debug_assertions)]
+                eprintln!("Couldn't find item name, ignoring.");
+                continue;
+            }
+        };
+
+        // get portions obj as array
+        let portion_obj: Vec<Value> = match get_portions_array(&item) {
+            Some(portions) => portions,
+            None => {
+                #[cfg(debug_assertions)]
+                eprintln!("Couldn't find portions object, ignoring.");
+                continue;
+            }
+        };
+
+
+        let mut portions = match parse_portions_obj(&portion_obj, strength) {
+            Some(portions) => portions,
+            None => {
+                #[cfg(debug_assertions)]
+                eprintln!("Couldn't parse portions object, ignoring.");
+                continue;
+            }
+        };
+
+
+        portions.sort_by(|a, b| a.ppu.total_cmp(&b.ppu));
+        drinks.push(Drink { name: name.to_string(), category: sub_category_name.clone(), strength, portions });
+    }
+
+    drinks
+}
+
+fn is_product(item: &Value) -> bool {
+    if let Some(item_type) = item.get("itemType") {
+        if item_type.as_str().unwrap_or("notproduct") != "product" {
+            return false; // itemType is not a product
+        }
+    } else {
+        return false; // continue if itemType not present
+    }
+    return true;
+}
+
+fn is_out_of_stock(item: &Value) -> bool {
+    if let Some(out_of_stock) = item.get("isOutOfStock") {
+        if out_of_stock.as_bool().unwrap_or(true) {
+            return true; // product out of stock
+        }
+    } else {
+        return true; // stock unknown
+    }
+    return false;
+}
+
+fn get_item_name(item: &Value) -> Option<String> {
+    match item.get("name") {
+        Some(name) => {
+            match name.as_str() {
+                Some(val) => Some(val.to_string()),
+                None =>  None
+            }
+        },
+        None => None
+    }
+}
+
+fn extract_abv(item: &Value) -> Option<f32> {
+    match item.get("description") {
+        Some(desc) => {
+            match desc.as_str() {
+                Some(desc_str) => {
+                    let safe_str = if desc_str.is_empty() {
+                        return None
+                    } else {
+                        desc_str
+                    };
+                    match extract_abv_from_desc(safe_str) {
+                        Some(abv) => match abv.parse::<f32>() {
+                            Ok(res) => Some(res),
+                            Err(_) => None
+                        },
+                        None => None
+                    }
+                },
+                None => None
+            }
+        },
+        None => None
+    }
+}
+
+fn extract_abv_from_desc(desc: &str) -> Option<String> {
+    // Find "% ABV" or "%ABV"
+    let percent_pos = match desc.find('%') {
+        Some(idx) => idx,
+        None => { return None; }
+    };
+    let after_percent = &desc[percent_pos + 1..];
+
+    // Must be followed by optional space then "ABV"
+    let rest = after_percent.trim_start();
+    if !rest.starts_with("ABV") {
+        return None;
+    }
+
+    // Walk backwards from '%' to collect the number (and dot) chars
+    let before = &desc[..percent_pos];
+    let mut start = before.len();
+
+    for (i, ch) in before.char_indices().rev() {
+        if ch.is_ascii_digit() || ch == '.' {
+            start = i;
+        } else {
+            break;
+        }
+    }
+
+    if start == before.len() {
+        return None;
+    }
+
+    Some(before[start..percent_pos].to_string())
+}
+
+fn get_portions_array(item: &Value) -> Option<Vec<Value>> {
+    match item.get("options") {
+        Some(obj) => {
+            match obj.get("portion") {
+                Some(portion_obj) => {
+                    match portion_obj.get("options") {
+                        Some(portion_options) => {
+                            if let Some(ok_portion_options) = portion_options.as_array() {
+
+                                if ok_portion_options.is_empty() { // dont return it if its empty / null
+                                    None
+                                } else {
+                                    Some(ok_portion_options.to_vec())
+                                }
+
+                            } else {
+                                None
+                            }
+                        },
+                        None => None
+                    }
+                },
+                None => None
+            }
+        },
+        None => None
+    }
+}
+
+fn parse_portions_obj(portion_obj: &Vec<Value>, item_strength: f32) -> Option<Vec<Portion>> {
+    // array to put Rust-struct portions in
+    let mut portions: Vec<Portion> = Vec::with_capacity(4);
+
+    for portion in portion_obj {
+        let value_obj = match portion.get("value") { 
+            Some(val) => val,
+            None => { continue; }
+        };
+
+        let price = match value_obj.get("price") {
+            Some(price_obj) => {
+                match price_obj.get("value") {
+                    Some(value) => match value.as_f64() {
+                        Some(price) => {
+                            price as f32
+                        },
+                        None => { continue; }
+                    },
+                    None => { continue; }
+                }
+            },
+            None => { continue; }
+        };
+
+        let volume = match value_obj.get("name") {
+            Some(volume_name) => {
+                let volume_name = match volume_name.as_str() {
+                    Some(val) => val,
+                    None => { continue; }
+                };
+
+                // handling for specific volumes
+                if volume_name.to_lowercase() == "bottle" {
+                    match value_obj.get("description") {
+                        Some(name) => {
+                            match name.as_str() {
+                                Some(val) => {
+                                    let numbers_only = val.chars().filter(|c| c.is_ascii_digit()).collect::<String>();
+                                    if numbers_only.is_empty() {
+                                        continue;
+                                    }
+                                    numbers_only.parse::<u32>().unwrap()
+                                },
+                                None => { continue; }
+                            }
+                        },
+                        None => { continue; }
+                    }
+                } else if volume_name.to_lowercase() == "can" {
+                    match value_obj.get("description") {
+                        Some(desc) => {
+                            match desc.as_str() {
+                                Some(val) => {
+                                    match extract_volume_from_desc(val) {
+                                        Some(vol) => { println!("Extract volume: {}", vol); vol },
+                                        None => { println!(/*"Couldn't extract vol from: {}""", val*/); continue; }
+                                    }
+                                },
+                                None => { continue; }
+                            }
+                        },
+                        None => { continue; }
+                    }
+                } else {
+                    match VOLUMES.get(volume_name) {
+                        Some(vol) => *vol,
+                        None => { continue; }   
+                    }
+                }
+            },
+            None => { continue; }
+        };
+
+        portions.push(
+            Portion {
+                amount: volume,
+                price: price,
+                strength: item_strength,
+                ppu: (price) / ((volume as f32 * (item_strength / 100.)) / 10.)
+            }
+        );
+    }
+
+    Some(portions)
+}
+
+fn extract_volume_from_desc(input: &str) -> Option<u32> {
+    let chars: Vec<char> = input.chars().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        // Skip non-digits
+        if !chars[i].is_ascii_digit() {
+            i += 1;
+            continue;
+        }
+
+        // Collect a run of digits
+        let start = i;
+        while i < chars.len() && chars[i].is_ascii_digit() {
+            i += 1;
+        }
+        let end = i;
+
+        // Optional whitespace after the number
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+
+        // Check for "ml" after the digits (and optional spaces)
+        if i + 1 < chars.len()
+            && (chars[i] == 'm' || chars[i] == 'M')
+            && (chars[i + 1] == 'l' || chars[i + 1] == 'L')
+        {
+            let num_str: String = chars[start..end].iter().collect();
+            if let Ok(value) = num_str.parse::<u32>() {
+                return Some(value);
+            }
+        }
+        // Otherwise continue scanning
+    }
+
+    None
 }

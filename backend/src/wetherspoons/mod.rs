@@ -5,8 +5,8 @@ use flate2::bufread::GzDecoder;
 use serde::{Deserialize, Serialize};
 use crate::wetherspoons::error::WetherspoonsError;
 
-mod error;
-mod drinks;
+pub mod error;
+pub mod drinks;
 
 const VENUE_ENDPOINT: &str = "https://oandp-appmgr-prod.s3.eu-west-2.amazonaws.com/global.json";
 const API_ENDPOINT: &str = "https://ca.jdw-apps.net/api/v0.1";
