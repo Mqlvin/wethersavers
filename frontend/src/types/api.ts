@@ -31,9 +31,3 @@ export class DirectRequest<T> {
     }
 }
 
-
-// test payload
-export interface TestPayload {
-    name: string;
-    num: number;
-}
