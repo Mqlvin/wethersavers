@@ -96,6 +96,7 @@ dependencies = [
  "base64",
  "flate2",
  "mime_guess",
+ "once_cell",
  "reqwest",
  "rust-embed",
  "serde",
