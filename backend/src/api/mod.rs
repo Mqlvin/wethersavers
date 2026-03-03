@@ -4,7 +4,7 @@ use axum::{Json, Router, routing::get};
 use flate2::{Compression, write::GzEncoder};
 use serde::Serialize;
 
-use crate::wetherspoons::{get_sales_int, get_venues};
+use crate::wetherspoons::{get_drinks_menu_id, get_sales_int, get_venues};
 
 #[derive(Serialize)]
 pub struct Response<T>
@@ -67,6 +67,7 @@ pub fn get_api_router() -> Router {
         }))
         .route("/getsalesid", get(|| async {
             let test = get_sales_int(5600).await.expect("got error id");
+            println!("{}", get_drinks_menu_id(5600, test).await.unwrap());
             Json(Response::ok(get_sales_int(5600).await.unwrap_or(usize::MAX)))
         }))
 }

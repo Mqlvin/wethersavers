@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::wetherspoons::error::WetherspoonsError;
 
 mod error;
+mod drinks;
 
 const VENUE_ENDPOINT: &str = "https://oandp-appmgr-prod.s3.eu-west-2.amazonaws.com/global.json";
 const API_ENDPOINT: &str = "https://ca.jdw-apps.net/api/v0.1";
@@ -90,37 +91,82 @@ pub async fn get_sales_int(venue_identifier: usize) -> Result<usize, Wetherspoon
     headers.insert("Authorization", HeaderValue::from_str(API_AUTH).expect("Could insert the auth header"));
     headers.insert("User-Agent", HeaderValue::from_str("Wetherspoons App").expect("Could insert the auth header"));
 
-    println!("Requesting: {}", format!("{}/venues/{}", API_ENDPOINT, venue_identifier));
-
     let gzipped = match reqwest::Client::new().get(format!("{}/venues/{}", API_ENDPOINT, venue_identifier)).headers(headers).send().await {
         Ok(resp) => {
-
             match resp.text().await {
                 Ok(gzipped_bytes) => gzipped_bytes,
                 Err(err) => {
-                    return Err(WetherspoonsError::GetVenuesError(format!("Couldn't get response text: {}", err.to_string()).to_string()));
+                    return Err(WetherspoonsError::ParseSalesIdError(format!("Couldn't get response text: {}", err.to_string()).to_string()));
                 }
             }
-
         },
         Err(err) => {
-            return Err(WetherspoonsError::GetVenuesError(format!("Couldn't request the detailed venue endpoint: {}", err.to_string()).to_string()));
+            return Err(WetherspoonsError::ParseSalesIdError(format!("Couldn't request the detailed venue endpoint: {}", err.to_string()).to_string()));
         }
     };
-
-    println!("{}", gzipped);
 
     let venue_details: VenueDetails = match serde_json::from_str(gzipped.as_str()) {
         Ok(obj) => obj,
         Err(err) => {
-            return Err(WetherspoonsError::ParseVenuesError(err.to_string()));
+            return Err(WetherspoonsError::ParseSalesIdError(err.to_string()));
         }
     };
 
     match venue_details.data.singleton.first() {
         Some(area) => Ok(area.id),
-        None => Err(WetherspoonsError::ParseVenuesError("Couldn't find sales bar ID in venue details".to_string()))
+        None => Err(WetherspoonsError::ParseSalesIdError("Couldn't find sales bar ID in venue details".to_string()))
     }
 }
 
-// https://ca.jdw-apps.net/api/v0.1/jdw/venues/5600/sales-areas/43/menus
+/*
+* Drink Menu Getter Queries
+*/
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct MenuListing {
+    data: Vec<Menu>
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Menu {
+    id: usize,
+    name: String
+}
+
+pub async fn get_drinks_menu_id(venue_identifier: usize, sales_id: usize) -> Result<usize, WetherspoonsError> {
+    let mut headers = HeaderMap::new();
+    headers.insert("Authorization", HeaderValue::from_str(API_AUTH).expect("Could insert the auth header"));
+    headers.insert("User-Agent", HeaderValue::from_str("Wetherspoons App").expect("Could insert the auth header"));
+
+    let menus_json = match reqwest::Client::new().get(format!("{}/jdw/venues/{}/sales-areas/{}/menus", API_ENDPOINT, venue_identifier, sales_id)).headers(headers).send().await {
+        Ok(resp) => {
+            match resp.text().await {
+                Ok(json_text) => json_text,
+                Err(err) => {
+                    return Err(WetherspoonsError::ParseMenusError(format!("Couldn't get response text: {}", err.to_string()).to_string()));
+                }
+            }
+
+        },
+        Err(err) => {
+            return Err(WetherspoonsError::ParseMenusError(format!("Couldn't request the detailed venue endpoint: {}", err.to_string()).to_string()));
+        }
+    };
+
+    let menus: MenuListing = match serde_json::from_str(&menus_json) {
+        Ok(obj) => obj,
+        Err(err) => {
+            return Err(WetherspoonsError::ParseMenusError(err.to_string()));
+        }
+    };
+
+    for menu in menus.data {
+        if menu.name.to_ascii_lowercase() == "drinks" {
+            return Ok(menu.id);
+        }
+    }
+
+    return Err(WetherspoonsError::ParseMenusError("No menu found with name 'drinks'".to_string()));
+}
+
+
