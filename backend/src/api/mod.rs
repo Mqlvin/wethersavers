@@ -4,7 +4,7 @@ use axum::{Json, Router, routing::get};
 use flate2::{Compression, write::GzEncoder};
 use serde::Serialize;
 
-use crate::wetherspoons::{get_drinks_menu_id, get_sales_int, get_venues};
+use crate::wetherspoons::{drinks::get_drinks_menu, get_drinks_menu_id, get_sales_int, get_venues};
 
 #[derive(Serialize)]
 pub struct Response<T>
@@ -57,7 +57,6 @@ pub fn get_api_router() -> Router {
                         Ok(res) => res,
                         Err(err) => { return Json(Response::err(format!("Failed to write bytes to GZIP compressor: {}", err.to_string()))); } 
                     };
-
                     let base64 = base64::encode(&result);
 
                     return Json(Response::ok(base64));
@@ -65,9 +64,27 @@ pub fn get_api_router() -> Router {
                 Err(err) => { return Json(Response::err(err.to_string())) }
             }
         }))
-        .route("/getsalesid", get(|| async {
-            let test = get_sales_int(5600).await.expect("got error id");
-            println!("{}", get_drinks_menu_id(5600, test).await.unwrap());
-            Json(Response::ok(get_sales_int(5600).await.unwrap_or(usize::MAX)))
+        .route("/drinks", get(|| async {
+            let sales_id = get_sales_int(5600).await.expect("got error id");
+            let drinks_menu_id = get_drinks_menu_id(5600, sales_id).await.unwrap();
+            let mut drinks = get_drinks_menu(5600, sales_id, drinks_menu_id).await.unwrap();
+            drinks.sort_by(|a, b| a.portions.first().expect("At least one portion").ppu.total_cmp(&b.portions.first().expect("At least one portion").ppu));
+
+            let json_string = match serde_json::to_string(&drinks) {
+                Ok(str) => str,
+                Err(err) => { return Json(Response::err(format!("Failed to drinks JSON to string: {}", err.to_string()))) }
+            };
+
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+            if let Err(err) = encoder.write_all(&json_string.as_bytes()) {
+                return Json(Response::err(format!("Failed to write bytes to GZIP compressor: {}", err.to_string())));
+            };
+            let result = match encoder.finish() {
+                Ok(res) => res,
+                Err(err) => { return Json(Response::err(format!("Failed to write bytes to GZIP compressor: {}", err.to_string()))); } 
+            };
+            let base64 = base64::encode(&result);
+
+            Json(Response::ok(base64))
         }))
 }
