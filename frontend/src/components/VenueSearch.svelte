@@ -1,6 +1,9 @@
 <script lang="ts">
     import { DirectRequest } from "$types/api";
     import { API_URL } from "$lib/api";
+    import { selectedVenue } from "$lib/venueStore";
+    import { goto } from '$app/navigation';
+
 
     let venueData = $state<any | null>(null);
     let venueFetchError = $state<string | null>(null);
@@ -75,6 +78,11 @@
 
         searchResults = venueData.filter(o => o.name.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 10);
     }
+
+    async function handleVenueClick(venueObj: any) {
+        selectedVenue.set(venueObj);
+        goto("/drinks");
+    }
 </script>
 
 <div id="container" class="center-container">
@@ -99,7 +107,7 @@
                 {:else}
                     
                     {#each searchResults as venue}
-                        <a class="search-result">
+                        <a class="search-result" on:click|preventDefault={() => { handleVenueClick(venue)}}>
                             <div class="result-content">
                                 <p style="font-weight: 600;">{venue.name}</p>
                                 <p style="font-weight: 400; opacity: 0.7; font-size: 0.8em;">{venue.town}</p>
