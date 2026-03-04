@@ -1,5 +1,5 @@
 <h1 id="title" class="thick-shadow">wethersavers</h1>
-<a id="subtext">The best financial advisor in town</a>
+<a id="subtext">The best alcoholic advisor in town</a>
 
 <style>
     #title {
