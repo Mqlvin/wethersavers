@@ -6,7 +6,7 @@ export interface FilterObject {
 
 export function getDefaultFilterObject(): FilterObject {
     return {
-        maxPrice: 4.00,
+        maxPrice: 10.00,
         totalResults: 10,
         excludeCategories: []
     };
