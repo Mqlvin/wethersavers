@@ -30,7 +30,8 @@
                     let json = JSON.parse(str);
                     venueData = json;
                     isFetchingData = false;
-                    console.log(venueData)
+
+                    queryChanged(); // if the user's already typed something, just check and fill results if so
                 } else {
                     venueFetchError = responseObj.error_reason;
                     isFetchingData = false;

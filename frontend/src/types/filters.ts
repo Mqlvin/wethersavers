@@ -25,6 +25,5 @@ export function applyFilter(drinkObjs: any, filters: FilterObject) {
         drinkObjBuilder.push(drinkObj);
     }
 
-    console.log(drinkObjBuilder)
     return drinkObjBuilder;
 }
