@@ -51,6 +51,7 @@ pub struct DrinksMenu {
 pub struct Drink {
     pub name: String,
     pub category: String,
+    pub medium: String,
     pub strength: f32,
     pub portions: Vec<Portion>,
 }
@@ -132,14 +133,8 @@ pub async fn get_drinks_menu(venue_identifier: &usize, sales_id: &usize, drinks_
         }
     }
 
-    let mut cats: Vec<String> = vec![];
-    for drink in &drink_accumulator {
-        if !cats.contains(&drink.category) {
-            cats.push(drink.category.to_string());
-        }
-    }
-
-    Ok(drink_accumulator.iter().filter(|drink| drink.portions.len() > 0 && drink.strength != 0.).cloned().collect())
+    post_process_drinks(&mut drink_accumulator);
+    Ok(drink_accumulator)
 }
 
 
@@ -171,6 +166,16 @@ fn parse_item_list(items: Vec<Value>, sub_category_name: String) -> Vec<Drink> {
             }
         };
 
+        // get description as array
+        let description = match get_global_description(&item) {
+            Some(desc) => desc,
+            None => {
+                #[cfg(debug_assertions)]
+                eprintln!("Couldn't find portions object, ignoring.");
+                continue;
+            }
+        };
+
         // get portions obj as array
         let portion_obj: Vec<Value> = match get_portions_array(&item) {
             Some(portions) => portions,
@@ -182,7 +187,7 @@ fn parse_item_list(items: Vec<Value>, sub_category_name: String) -> Vec<Drink> {
         };
 
 
-        let mut portions = match parse_portions_obj(&portion_obj, strength) {
+        let (mut portions, medium) = match parse_portions_obj(&portion_obj, strength, description) {
             Some(portions) => portions,
             None => {
                 #[cfg(debug_assertions)]
@@ -193,7 +198,7 @@ fn parse_item_list(items: Vec<Value>, sub_category_name: String) -> Vec<Drink> {
 
 
         portions.sort_by(|a, b| a.ppu.total_cmp(&b.ppu));
-        drinks.push(Drink { name: name.to_string(), category: sub_category_name.clone(), strength, portions });
+        drinks.push(Drink { name: name.to_string(), category: sub_category_name.clone(), medium, strength, portions });
     }
 
     drinks
@@ -223,6 +228,18 @@ fn is_out_of_stock(item: &Value) -> bool {
 
 fn get_item_name(item: &Value) -> Option<String> {
     match item.get("name") {
+        Some(name) => {
+            match name.as_str() {
+                Some(val) => Some(val.to_string()),
+                None =>  None
+            }
+        },
+        None => None
+    }
+}
+
+fn get_global_description(item: &Value) -> Option<String> {
+    match item.get("description") {
         Some(name) => {
             match name.as_str() {
                 Some(val) => Some(val.to_string()),
@@ -320,9 +337,11 @@ fn get_portions_array(item: &Value) -> Option<Vec<Value>> {
     }
 }
 
-fn parse_portions_obj(portion_obj: &Vec<Value>, item_strength: f32) -> Option<Vec<Portion>> {
+// returns portions, can/pint/etc
+fn parse_portions_obj(portion_obj: &Vec<Value>, item_strength: f32, global_description: String) -> Option<(Vec<Portion>, String)> {
     // array to put Rust-struct portions in
     let mut portions: Vec<Portion> = Vec::with_capacity(4);
+    let mut drink_medium: Option<String> = None;
 
     for portion in portion_obj {
         let value_obj = match portion.get("value") { 
@@ -345,29 +364,31 @@ fn parse_portions_obj(portion_obj: &Vec<Value>, item_strength: f32) -> Option<Ve
             None => { continue; }
         };
 
-        let volume = match value_obj.get("name") {
+
+        let volume_extract: Option<u32> = match value_obj.get("name") {
             Some(volume_name) => {
                 let volume_name = match volume_name.as_str() {
                     Some(val) => val,
                     None => { continue; }
                 };
 
+                drink_medium = Some(volume_name.to_string());
+
                 // handling for specific volumes
                 if volume_name.to_lowercase() == "bottle" {
                     match value_obj.get("description") {
-                        Some(name) => {
-                            match name.as_str() {
+                        Some(desc) => {
+                            match desc.as_str() {
                                 Some(val) => {
-                                    let numbers_only = val.chars().filter(|c| c.is_ascii_digit()).collect::<String>();
-                                    if numbers_only.is_empty() {
-                                        continue;
+                                    match extract_volume_from_desc(val) {
+                                        Some(vol) => { Some(vol) },
+                                        None => { None }
                                     }
-                                    numbers_only.parse::<u32>().unwrap()
                                 },
-                                None => { continue; }
+                                None => { None }
                             }
                         },
-                        None => { continue; }
+                        None => { None }
                     }
                 } else if volume_name.to_lowercase() == "can" {
                     match value_obj.get("description") {
@@ -375,36 +396,49 @@ fn parse_portions_obj(portion_obj: &Vec<Value>, item_strength: f32) -> Option<Ve
                             match desc.as_str() {
                                 Some(val) => {
                                     match extract_volume_from_desc(val) {
-                                        Some(vol) => { println!("Extract volume: {}", vol); vol },
-                                        None => { println!(/*"Couldn't extract vol from: {}""", val*/); continue; }
+                                        Some(vol) => { Some(vol) },
+                                        None => { None }
                                     }
                                 },
-                                None => { continue; }
+                                None => { None }
                             }
                         },
-                        None => { continue; }
+                        None => { None }
                     }
                 } else {
                     match VOLUMES.get(volume_name) {
-                        Some(vol) => *vol,
-                        None => { continue; }   
+                        Some(vol) => Some(*vol),
+                        None => { None }   
                     }
                 }
             },
-            None => { continue; }
+            None => { 
+                match extract_volume_from_desc(&global_description) {
+                    Some(vol) => { Some(vol) },
+                    None => {
+                        #[cfg(debug_assertions)]
+                        eprintln!("Couldn't extract vol from fallback: {}", global_description);
+                        None
+                    }
+                }
+            }
         };
+
+        if let None = volume_extract {
+            continue;
+        }
 
         portions.push(
             Portion {
-                amount: volume,
+                amount: volume_extract.unwrap(),
                 price: price,
                 strength: item_strength,
-                ppu: (price) / ((volume as f32 * (item_strength / 100.)) / 10.)
+                ppu: (price) / ((volume_extract.unwrap() as f32 * (item_strength / 100.)) / 10.)
             }
         );
     }
 
-    Some(portions)
+    Some((portions, drink_medium.unwrap_or("".to_string())))
 }
 
 fn extract_volume_from_desc(input: &str) -> Option<u32> {
@@ -444,4 +478,20 @@ fn extract_volume_from_desc(input: &str) -> Option<u32> {
     }
 
     None
+}
+
+fn post_process_drinks(drinks: &mut Vec<Drink>) {
+    drinks.retain(|drink| drink.portions.len() > 0 && drink.strength >= 0.05);
+
+    drinks.iter_mut().for_each(|drink| {
+        if let Some(first_ppu) = drink.portions.first().map(|p| p.ppu) {
+            drink.portions.retain(|p| p.ppu == first_ppu);
+        }
+
+        drink.portions.sort_by(|a, b| b.amount.cmp(&a.amount));
+
+        if drink.portions.len() > 1 {
+            drink.portions.truncate(1);
+        }
+    });
 }
