@@ -86,7 +86,7 @@ pub struct VenueSalesArea {
     id: usize
 }
 
-pub async fn get_sales_int(venue_identifier: usize) -> Result<usize, WetherspoonsError> {
+pub async fn get_sales_int(venue_identifier: &usize) -> Result<usize, WetherspoonsError> {
     let mut headers = HeaderMap::new();
     headers.insert("Authorization", HeaderValue::from_str(API_AUTH).expect("Could insert the auth header"));
     headers.insert("User-Agent", HeaderValue::from_str("Wetherspoons App").expect("Could insert the auth header"));
@@ -133,7 +133,7 @@ pub struct Menu {
     name: String
 }
 
-pub async fn get_drinks_menu_id(venue_identifier: usize, sales_id: usize) -> Result<usize, WetherspoonsError> {
+pub async fn get_drinks_menu_id(venue_identifier: &usize, sales_id: &usize) -> Result<usize, WetherspoonsError> {
     let mut headers = HeaderMap::new();
     headers.insert("Authorization", HeaderValue::from_str(API_AUTH).expect("Could insert the auth header"));
     headers.insert("User-Agent", HeaderValue::from_str("Wetherspoons App").expect("Could insert the auth header"));

@@ -65,7 +65,7 @@ pub struct Portion {
 
 
 
-pub async fn get_drinks_menu(venue_identifier: usize, sales_id: usize, drinks_menu_id: usize) -> Result<Vec<Drink>, WetherspoonsError> {
+pub async fn get_drinks_menu(venue_identifier: &usize, sales_id: &usize, drinks_menu_id: &usize) -> Result<Vec<Drink>, WetherspoonsError> {
     let mut headers = HeaderMap::new();
     headers.insert("Authorization", HeaderValue::from_str(API_AUTH).expect("Could insert the auth header"));
     headers.insert("User-Agent", HeaderValue::from_str("Wetherspoons App").expect("Could insert the auth header"));

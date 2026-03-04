@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use axum::{Json, Router, routing::get};
+use axum::{Json, Router, extract::Path, routing::get};
 use flate2::{Compression, write::GzEncoder};
 use serde::Serialize;
 
@@ -64,10 +64,23 @@ pub fn get_api_router() -> Router {
                 Err(err) => { return Json(Response::err(err.to_string())) }
             }
         }))
-        .route("/drinks", get(|| async {
-            let sales_id = get_sales_int(5600).await.expect("got error id");
-            let drinks_menu_id = get_drinks_menu_id(5600, sales_id).await.unwrap();
-            let mut drinks = get_drinks_menu(5600, sales_id, drinks_menu_id).await.unwrap();
+        .route("/drinks/{id}", get(|Path(id): Path<usize>| async move {
+            let sales_id = match get_sales_int(&id).await {
+                Ok(val) => val,
+                Err(err) => { return Json(Response::err(err.to_string())); }
+            };
+
+            let drinks_menu_id = match get_drinks_menu_id(&id, &sales_id).await {
+                Ok(val) => val,
+                Err(err) => { return Json(Response::err(err.to_string())); }
+            };
+
+            let mut drinks = match get_drinks_menu(&id, &sales_id, &drinks_menu_id).await {
+                Ok(val) => val,
+                Err(err) => { return Json(Response::err(err.to_string())); }
+            };
+
+
             drinks.sort_by(|a, b| a.portions.first().expect("At least one portion").ppu.total_cmp(&b.portions.first().expect("At least one portion").ppu));
 
             let json_string = match serde_json::to_string(&drinks) {
