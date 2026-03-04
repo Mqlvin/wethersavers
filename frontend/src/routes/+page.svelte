@@ -2,20 +2,32 @@
     import { DirectRequest } from "$types/api";
     import { API_URL } from "$lib/api";
 
-    async function fetchData() {
-        const resp = await fetch(API_URL + "/drinks");
-        let response = new DirectRequest<string>(await resp.text());
+    let drinks = $state<string | null>(null);
+    let error = $state<string | null>(null);
+    let loading = $state(true);
 
-        if(response.isOk()) {
+    $effect(() => {
+        async function fetchData() {
+            try {
+                const resp = await fetch(API_URL + "/drinks/5600");
+                let response = new DirectRequest<string>(await resp.text());
 
-            let str = decodeGzippedBase64(response.data);
-            let json = JSON.parse(str);
-            return json;
-
-        } else {
-            return "Error, couldn't load drinks";
+                if (response.isOk()) {
+                    let str = decodeGzippedBase64(response.data);
+                    let json = JSON.parse(str);
+                    drinks.set(json);
+                } else {
+                    error = "Error, couldn't load drinks";
+                }
+            } catch (e) {
+                error = "Failed to fetch drinks";
+            } finally {
+                loading = false;
+            }
         }
-    }
+
+        fetchData();
+    });
 
     async function decodeGzippedBase64(b64: string): Promise<string> {
         let binary = atob(b64);
@@ -36,17 +48,20 @@
     }
 </script>
 
-<div class="prose max-w-none">
-    <h1>SPA Frontend</h1>
+<div class="center-container container">
+    <h1>whatsavers</h1>
+    <h4>The best financial advisor in town</h4>
 
-    <p>
-        {#await fetchData()}
-            Fetching data from <code>/api/data</code> <br/>
-            (should take precisely 3 seconds)
-        {:then data}
-            {data}
-        {/await}
-    </p>
-
-    <a href="child-url">Go to another route</a>
+    <input type="text" maxlength="50" class="box venue-search">
 </div>
+
+<style>
+    .container {
+        margin-top: 2em;
+    }
+
+    .venue-search {
+        width: 600px;
+        max-width: 90%;
+    }
+</style>
