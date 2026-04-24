@@ -100,7 +100,6 @@
         }
     });
 
-
 </script>
 
 <div id="center-wrapper" class="center-container">
@@ -139,6 +138,8 @@
             <div id="result-container" class="center-container">
                 {#if displayedDrinks != null && displayedDrinks.length > 0}
                     {#each displayedDrinks as drink, idx}
+                        {@const relativePpu = idx == 0 ? 0 : (((drink.portions[0].ppu/displayedDrinks[0].portions[0].ppu) - 1) * 100)}
+                        {@const relativePpuColour = relativePpu <= 50 ? "" : relativePpu <= 80 ? "low-increase" : relativePpu <= 110 ? "med-increase" : "high-increase"}
                         <div class="result box">
                             <div style="width: 80%; display: flex; flex-direction: column; align-items: left;">
                                 <span class="drink-name">{drink.name}</span>
@@ -150,8 +151,8 @@
                             </div>
                             <div style="display: flex; flex-direction: column;">
                                 <p class="ppu">{drink.medium}</p>
-                                <p style="margin-top: auto;" class="plus-price">+{idx == 0 ? "0" : (((drink.portions[0].ppu/displayedDrinks[0].portions[0].ppu) - 1) * 100).toFixed(0)}%</p>
-                                <p class="ppu">£{drink.portions[0].ppu.toFixed(2)}/u</p>
+                                <p style="margin-top: auto;" class="plus-price {relativePpuColour}">+{relativePpu.toFixed(0)}%</p>
+                                <p class="ppu {relativePpuColour}">£{drink.portions[0].ppu.toFixed(2)}/u</p>
                             </div>
                         </div>
                     {/each}
@@ -272,5 +273,21 @@
 
     :global(.expand-icon) {
         display: none;
+    }
+
+    .low-increase {
+        color: #9d0c0c;
+        opacity: 0.55;
+    }
+
+    .med-increase {
+        color: #bc0000;
+        opacity: 0.85;
+    }
+
+    .high-increase {
+        color: #9a0000;
+        opacity: 1;
+        font-weight: bold;
     }
 </style>
