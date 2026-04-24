@@ -1,4 +1,4 @@
-use std::{collections::HashMap};
+use std::collections::{HashMap, HashSet};
 
 use axum::http::{HeaderMap, HeaderValue};
 use once_cell::sync::Lazy;
@@ -482,6 +482,11 @@ fn extract_volume_from_desc(input: &str) -> Option<u32> {
 
 fn post_process_drinks(drinks: &mut Vec<Drink>) {
     drinks.retain(|drink| drink.portions.len() > 0 && drink.strength >= 0.05);
+
+    let mut seen_drinks: HashSet<(String, String)> = HashSet::new();
+    drinks.retain(|drink| {
+        seen_drinks.insert((drink.name.clone(), drink.medium.clone()))
+    });
 
     drinks.iter_mut().for_each(|drink| {
         if let Some(first_ppu) = drink.portions.first().map(|p| p.ppu) {
