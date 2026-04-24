@@ -30,7 +30,6 @@
                     let json = JSON.parse(str);
                     venueData = json;
                     isFetchingData = false;
-
                     queryChanged(); // if the user's already typed something, just check and fill results if so
                 } else {
                     venueFetchError = responseObj.error_reason;
@@ -67,7 +66,7 @@
     async function queryChanged() {
         fetchVenues();
 
-        if(searchQuery.length < 3 || searchQuery.trim() == "the") {
+        if(searchQuery.length < 3 || searchQuery.trim().toLowerCase() == "the") {
             searchResults = null;
             return;
         }
@@ -77,7 +76,10 @@
             return;
         }
 
-        searchResults = venueData.filter(o => o.name.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 10);
+        searchResults = venueData.filter(
+            o => (o.name != undefined && o.name.toLowerCase().includes(searchQuery.toLowerCase()))
+            || (o.town != undefined && o.town.toLowerCase().includes(searchQuery.toLowerCase()))
+        ).slice(0, 10);
     }
 
     async function handleVenueClick(venueObj: any) {
