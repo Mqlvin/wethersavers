@@ -35,7 +35,6 @@ struct VenuesData {
 pub async fn get_venues() -> Result<Vec<Venue>, WetherspoonsError> {
     let gzipped = match reqwest::get(VENUE_ENDPOINT).await {
         Ok(resp) => {
-
             match resp.bytes().await {
                 Ok(gzipped_bytes) => gzipped_bytes,
                 Err(err) => {
@@ -45,6 +44,7 @@ pub async fn get_venues() -> Result<Vec<Venue>, WetherspoonsError> {
 
         },
         Err(err) => {
+            eprintln!("reqwest::get error: {:#?}", err);
             return Err(WetherspoonsError::GetVenuesError(format!("Couldn't request the venue endpoint: {}", err.to_string()).to_string()));
         }
     };
