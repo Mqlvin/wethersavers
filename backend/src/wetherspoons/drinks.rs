@@ -4,6 +4,7 @@ use axum::http::{HeaderMap, HeaderValue};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use regex::Regex;
 
 use crate::wetherspoons::{API_AUTH, API_ENDPOINT, error::WetherspoonsError};
 
@@ -37,7 +38,14 @@ static DRINK_CATEGORIES: Lazy<Vec<&str>> = Lazy::new(|| {
         "Tequila",
         "Liqueurs, cognac and brandy ",
         "Bombs and shots",
+        "2 for £6.50",
+        "3 for £5.10",
+        "4 for £5",
     ]
+});
+
+static PARSE_QTY_PRICE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)^\s*(\d+)\s*for\s*£\s*([0-9]+(?:\.[0-9]+)?)\s*$").unwrap()
 });
 
 
@@ -106,11 +114,13 @@ pub async fn get_drinks_menu(venue_identifier: &usize, sales_id: &usize, drinks_
 
     
     let mut drink_accumulator: Vec<Drink> = vec![];
+    let multibuy_options: Vec<(String, u8, f32)> = extract_multibuy_categories(&categories);
+    let multibuy_category_names: Vec<&str> = multibuy_options.iter().map(|o| o.0.as_str()).collect();
 
     for category in categories {
         let name_fallback = Value::String("Unknown".to_string());
         let name = category.get("name").unwrap_or(&name_fallback).as_str().unwrap_or("Unknown");
-        if !DRINK_CATEGORIES.contains(&name) { continue; } // ignore drinks outside alcoholic categories
+        if !DRINK_CATEGORIES.contains(&name) && !multibuy_category_names.contains(&name) { continue; } // ignore drinks outside alcoholic categories
 
         if let None = category.get("itemGroups") {
             return Err(WetherspoonsError::ParseDrinksError("Couldn't find itemGroups in drinks menu".to_string()));
@@ -129,7 +139,14 @@ pub async fn get_drinks_menu(venue_identifier: &usize, sales_id: &usize, drinks_
                 None => { name } // fallback to category name
             }.to_string();
 
-            drink_accumulator.append(&mut parse_item_list(item.get("items").unwrap().as_array().unwrap().to_vec(), sub_category_name));
+            // if the item category is a multi-buy deal, override the items price price before
+            // adding to the app
+            let price_override = if let Some((_, qty, price)) = multibuy_options.iter().find(|c| c.0 == name) {
+                Some(price / *qty as f32)
+            } else {
+                None
+            };
+            drink_accumulator.append(&mut parse_item_list(item.get("items").unwrap().as_array().unwrap().to_vec(), sub_category_name, price_override));
         }
     }
 
@@ -139,22 +156,14 @@ pub async fn get_drinks_menu(venue_identifier: &usize, sales_id: &usize, drinks_
 
 
 
-fn parse_item_list(items: Vec<Value>, sub_category_name: String) -> Vec<Drink> {
+// price override is used in the case of multibuy options such as 2 for £5
+// since all items in that case are 2.50, we can override all items below with the associated price
+fn parse_item_list(items: Vec<Value>, sub_category_name: String, price_override: Option<f32>) -> Vec<Drink> {
     let mut drinks: Vec<Drink> = vec![];
 
     for item in items {
         if !is_product(&item) { continue; }
         if is_out_of_stock(&item) { continue; }
-
-        // get strength of item, or return (probs not alcoholic)
-        let strength: f32 = match extract_abv(&item) {
-            Some(val) => val,
-            None => {
-                #[cfg(debug_assertions)]
-                eprintln!("Couldn't find item ABV, ignoring.");
-                continue;
-            }
-        };
 
         // get name of item
         let name = match get_item_name(&item) {
@@ -162,6 +171,16 @@ fn parse_item_list(items: Vec<Value>, sub_category_name: String) -> Vec<Drink> {
             None => {
                 #[cfg(debug_assertions)]
                 eprintln!("Couldn't find item name, ignoring.");
+                continue;
+            }
+        };
+
+        // get strength of item, or return (probs not alcoholic)
+        let strength: f32 = match extract_abv(&item) {
+            Some(val) => val,
+            None => {
+                #[cfg(debug_assertions)]
+                eprintln!("Couldn't find item ABV for item '{}', ignoring.", name);
                 continue;
             }
         };
@@ -186,8 +205,9 @@ fn parse_item_list(items: Vec<Value>, sub_category_name: String) -> Vec<Drink> {
             }
         };
 
-
-        let (mut portions, medium) = match parse_portions_obj(&portion_obj, strength, description) {
+        // otherwise parse the portions (unknown type) json object into typed struct, apply price
+        // override if required
+        let (mut portions, medium) = match parse_portions_obj(&portion_obj, strength, description, price_override) {
             Some(portions) => portions,
             None => {
                 #[cfg(debug_assertions)]
@@ -196,9 +216,15 @@ fn parse_item_list(items: Vec<Value>, sub_category_name: String) -> Vec<Drink> {
             }
         };
 
+        // if we have multiple portions and a price override, we have a problem
+        if price_override.is_some() && portions.len() != 1 {
+            #[cfg(debug_assertions)]
+            // eprintln!("Item '{}' was part of a deal (price override active) however there were {} portions", name, portions.len());
+            continue;
+        }
 
         portions.sort_by(|a, b| a.ppu.total_cmp(&b.ppu));
-        drinks.push(Drink { name: name.to_string(), category: sub_category_name.clone(), medium, strength, portions });
+        drinks.push(Drink { name: if price_override.is_some() { format!("[{}] {}", sub_category_name, name).to_string() } else { name.to_string() }, category: sub_category_name.clone(), medium, strength, portions });
     }
 
     drinks
@@ -338,7 +364,7 @@ fn get_portions_array(item: &Value) -> Option<Vec<Value>> {
 }
 
 // returns portions, can/pint/etc
-fn parse_portions_obj(portion_obj: &Vec<Value>, item_strength: f32, global_description: String) -> Option<(Vec<Portion>, String)> {
+fn parse_portions_obj(portion_obj: &Vec<Value>, item_strength: f32, global_description: String, price_override: Option<f32>) -> Option<(Vec<Portion>, String)> {
     // array to put Rust-struct portions in
     let mut portions: Vec<Portion> = Vec::with_capacity(4);
     let mut drink_medium: Option<String> = None;
@@ -349,19 +375,23 @@ fn parse_portions_obj(portion_obj: &Vec<Value>, item_strength: f32, global_descr
             None => { continue; }
         };
 
-        let price = match value_obj.get("price") {
-            Some(price_obj) => {
-                match price_obj.get("value") {
-                    Some(value) => match value.as_f64() {
-                        Some(price) => {
-                            price as f32
+        let price = if let Some(overridden_price) = price_override {
+            overridden_price
+        } else {
+            match value_obj.get("price") {
+                Some(price_obj) => {
+                    match price_obj.get("value") {
+                        Some(value) => match value.as_f64() {
+                            Some(price) => {
+                                price as f32
+                            },
+                            None => { continue; }
                         },
                         None => { continue; }
-                    },
-                    None => { continue; }
-                }
-            },
-            None => { continue; }
+                    }
+                },
+                None => { continue; }
+            }
         };
 
 
@@ -391,18 +421,22 @@ fn parse_portions_obj(portion_obj: &Vec<Value>, item_strength: f32, global_descr
                         None => { None }
                     }
                 } else if volume_name.to_lowercase() == "can" {
-                    match value_obj.get("description") {
+                    let mut desc_to_use = match value_obj.get("description") {
                         Some(desc) => {
                             match desc.as_str() {
                                 Some(val) => {
-                                    match extract_volume_from_desc(val) {
-                                        Some(vol) => { Some(vol) },
-                                        None => { None }
-                                    }
+                                    val
                                 },
-                                None => { None }
+                                None => { &global_description }
                             }
                         },
+                        None => { &global_description }
+                    };
+                    if desc_to_use.is_empty() {
+                        desc_to_use = &global_description;
+                    }
+                    match extract_volume_from_desc(desc_to_use) {
+                        Some(vol) => { Some(vol) },
                         None => { None }
                     }
                 } else {
@@ -499,4 +533,35 @@ fn post_process_drinks(drinks: &mut Vec<Drink>) {
             drink.portions.truncate(1);
         }
     });
+}
+
+// Return a list of categories names, and their amount and price, etc [("2 for £5", 2, 5.00), ...]
+fn extract_multibuy_categories(categories: &Vec<Value>) -> Vec<(String, u8, f32)> {
+    let mut multibuy_categories: Vec<(String, u8, f32)> = Vec::new();
+
+    for category in categories {
+        let name = match category.get("name") {
+            Some(val) => {
+                match val.as_str() {
+                    Some(name) => name,
+                    None => continue
+                }
+            }
+            None => continue
+        };
+        
+        if let Some((qty, price)) = parse_qty_price(&name) {
+            multibuy_categories.push((name.to_string(), qty, price));
+        }
+    }
+
+    multibuy_categories
+}
+
+fn parse_qty_price(name: &str) -> Option<(u8, f32)> {
+    PARSE_QTY_PRICE.captures(name).and_then(|cap| {
+        let qty = cap.get(1)?.as_str().parse::<u8>().ok()?;
+        let price = cap.get(2)?.as_str().parse::<f32>().ok()?;
+        Some((qty, price))
+    })
 }
