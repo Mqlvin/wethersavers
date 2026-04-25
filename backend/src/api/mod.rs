@@ -1,10 +1,10 @@
-use std::io::Write;
+use std::{io::Write, sync::Arc};
 
 use axum::{Json, Router, extract::Path, routing::get};
 use flate2::{Compression, write::GzEncoder};
 use serde::Serialize;
 
-use crate::wetherspoons::{drinks::get_drinks_menu, get_drinks_menu_id, get_sales_int, get_venues};
+use crate::wetherspoons::{cache::{get_cached_drinks_menu, has_valid_drinks_cache}, drinks::{Drink, get_drinks_menu}, get_drinks_menu_id, get_sales_int, get_venues};
 
 #[derive(Serialize)]
 pub struct Response<T>
@@ -65,22 +65,30 @@ pub fn get_api_router() -> Router {
             }
         }))
         .route("/drinks/{id}", get(|Path(id): Path<usize>| async move {
-            let sales_id = match get_sales_int(&id).await {
-                Ok(val) => val,
-                Err(err) => { return Json(Response::err(err.to_string())); }
+            let mut arc_drinks = if !has_valid_drinks_cache(&id) {
+                let sales_id = match get_sales_int(&id).await {
+                    Ok(val) => val,
+                    Err(err) => { return Json(Response::err(err.to_string())); }
+                };
+
+                let drinks_menu_id = match get_drinks_menu_id(&id, &sales_id).await {
+                    Ok(val) => val,
+                    Err(err) => { return Json(Response::err(err.to_string())); }
+                };
+
+                match get_cached_drinks_menu(&id, &sales_id, &drinks_menu_id).await {
+                    Ok(val) => val,
+                    Err(err) => { return Json(Response::err(err.to_string())); }
+                }
+            } else {
+                match get_cached_drinks_menu(&id, &0, &0).await {
+                    Ok(val) => val,
+                    Err(err) => { return Json(Response::err(err.to_string())); }
+                }
             };
 
-            let drinks_menu_id = match get_drinks_menu_id(&id, &sales_id).await {
-                Ok(val) => val,
-                Err(err) => { return Json(Response::err(err.to_string())); }
-            };
 
-            let mut drinks = match get_drinks_menu(&id, &sales_id, &drinks_menu_id).await {
-                Ok(val) => val,
-                Err(err) => { return Json(Response::err(err.to_string())); }
-            };
-
-
+            let drinks: &mut Vec<Drink> = Arc::make_mut(&mut arc_drinks);
             drinks.sort_by(|a, b| a.portions.first().expect("At least one portion").ppu.total_cmp(&b.portions.first().expect("At least one portion").ppu));
 
             let json_string = match serde_json::to_string(&drinks) {
