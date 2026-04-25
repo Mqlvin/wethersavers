@@ -7,6 +7,7 @@ use crate::wetherspoons::error::WetherspoonsError;
 
 pub mod error;
 pub mod drinks;
+pub mod cache;
 
 const VENUE_ENDPOINT: &str = "https://oandp-appmgr-prod.s3.eu-west-2.amazonaws.com/global.json";
 const API_ENDPOINT: &str = "https://ca.jdw-apps.net/api/v0.1";
