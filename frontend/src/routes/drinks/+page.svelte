@@ -142,12 +142,17 @@
                         {@const relativePpuColour = relativePpu <= 50 ? "" : relativePpu <= 80 ? "low-increase" : relativePpu <= 110 ? "med-increase" : "high-increase"}
                         <div class="result box">
                             <div style="width: 80%; display: flex; flex-direction: column; align-items: left;">
-                                <span class="drink-name">{drink.name}</span>
+                                {#if drink.name[0] == "["}
+                                    {@const m = drink.name.match(/^([^]+)\]\s*(.*)$/)}
+                                    <span class="drink-name"><span class="drink-deal">{m[1].substring(1)} </span> {m[2]}</span>
+                                {:else}
+                                    <span class="drink-name">{drink.name}</span>
+                                {/if}
                                 <div style="display: flex; align-items: left;">
                                     <span class="drink-volume">{drink.portions[0].amount}ml &nbsp;</span>
                                     <span class="drink-strength">{drink.strength.toFixed(1)}%</span>
                                 </div>
-                                <span class="drink-price">£{drink.portions[0].price.toFixed(2)}</span>
+                                <span class="drink-price">£{drink.portions[0].price.toFixed(2)}{drink.name[0] == "[" ? " each" : ""}</span>
                             </div>
                             <div style="display: flex; flex-direction: column;">
                                 <p class="ppu">{drink.medium}</p>
@@ -214,7 +219,7 @@
 
     .result {
         width: 100%;
-        height: 90px;
+        min-height: 90px;
 
         padding: 10px;
         box-sizing: border-box;
@@ -234,6 +239,18 @@
         font-weight: 600;
 
         text-align: left;
+    }
+
+    .drink-deal {
+        color: #fff;
+
+        padding: 1px 5px 1px 5px;
+        margin-right: 2px;
+
+        border-radius: 4px;
+        background-color: #aa581d;
+
+        font-size: 0.9em;
     }
 
     .drink-volume, .drink-strength {
@@ -276,8 +293,8 @@
     }
 
     .low-increase {
-        color: #9d0c0c;
-        opacity: 0.55;
+        color: #bf1717;
+        opacity: 0.60;
     }
 
     .med-increase {
