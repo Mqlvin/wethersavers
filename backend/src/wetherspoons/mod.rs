@@ -1,7 +1,7 @@
-use std::io::Read;
+use std::io::{Read, Write};
 
 use axum::http::{HeaderMap, HeaderValue};
-use flate2::bufread::GzDecoder;
+use flate2::{Compression, write::GzEncoder, bufread::GzDecoder};
 use serde::{Deserialize, Serialize};
 use crate::wetherspoons::error::WetherspoonsError;
 
@@ -33,7 +33,7 @@ struct VenuesData {
     venues: Vec<Venue>
 }
 
-pub async fn get_venues() -> Result<Vec<Venue>, WetherspoonsError> {
+pub async fn get_venues() -> Result<String, WetherspoonsError> {
     let gzipped = match reqwest::get(VENUE_ENDPOINT).await {
         Ok(resp) => {
             match resp.bytes().await {
@@ -63,7 +63,23 @@ pub async fn get_venues() -> Result<Vec<Venue>, WetherspoonsError> {
         }
     };
 
-    return Ok(venues_data.venues.iter().filter(|venue| venue.is_closed.unwrap_or(1u8) == 0u8).cloned().collect());
+    let venues = venues_data.venues.iter().filter(|venue| venue.is_closed.unwrap_or(1u8) == 0u8).cloned().collect::<Vec<Venue>>();
+    let json_string = match serde_json::to_string(&venues) {
+        Ok(str) => str,
+        Err(_) => { return Err(WetherspoonsError::GetVenuesError("Failed to convert venue JSON to string".to_string())); }
+    };
+
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    if let Err(err) = encoder.write_all(&json_string.as_bytes()) {
+        return Err(WetherspoonsError::GetVenuesError(format!("Failed to write bytes to GZIP compressor: {}", err.to_string())));
+    };
+    let result = match encoder.finish() {
+        Ok(res) => res,
+        Err(err) => { return Err(WetherspoonsError::GetVenuesError(format!("Failed to write bytes to GZIP compressor: {}", err.to_string()))); } 
+    };
+    let base64 = base64::encode(&result);
+
+    return Ok(base64);
 }
 
 

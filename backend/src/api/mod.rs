@@ -4,7 +4,7 @@ use axum::{Json, Router, extract::Path, routing::get};
 use flate2::{Compression, write::GzEncoder};
 use serde::Serialize;
 
-use crate::wetherspoons::{cache::{get_cached_drinks_menu, has_valid_drinks_cache}, drinks::{Drink, get_drinks_menu}, get_drinks_menu_id, get_sales_int, get_venues};
+use crate::wetherspoons::{cache::{get_cached_drinks_menu, get_cached_venues_encoded, has_valid_drinks_cache}, drinks::{Drink, get_drinks_menu}, get_drinks_menu_id, get_sales_int, get_venues};
 
 #[derive(Serialize)]
 pub struct Response<T>
@@ -42,24 +42,9 @@ impl<T: Serialize> Response<T> {
 pub fn get_api_router() -> Router {
     Router::new()
         .route("/venues", get(|| async {
-            match get_venues().await {
-                Ok(venues) => {
-                    let json_string = match serde_json::to_string(&venues) {
-                        Ok(str) => str,
-                        Err(err) => { return Json(Response::err(format!("Failed to convert venue JSON to string: {}", err.to_string()))) }
-                    };
-
-                    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-                    if let Err(err) = encoder.write_all(&json_string.as_bytes()) {
-                        return Json(Response::err(format!("Failed to write bytes to GZIP compressor: {}", err.to_string())));
-                    };
-                    let result = match encoder.finish() {
-                        Ok(res) => res,
-                        Err(err) => { return Json(Response::err(format!("Failed to write bytes to GZIP compressor: {}", err.to_string()))); } 
-                    };
-                    let base64 = base64::encode(&result);
-
-                    return Json(Response::ok(base64));
+            match get_cached_venues_encoded().await {
+                Ok(str) => {
+                    return Json(Response::ok((&*str).clone()));
                 },
                 Err(err) => { return Json(Response::err(err.to_string())) }
             }
