@@ -1,6 +1,6 @@
 <script lang="ts">
     import { DirectRequest } from "$types/api";
-    import { API_URL } from "$lib/api";
+    import { API_URL, decodeGzippedBase64 } from "$lib/api";
     import { selectedVenue } from "$lib/venueStore";
     import { goto } from '$app/navigation';
 
@@ -42,24 +42,6 @@
                 isFetchingData = false;
             }
         }
-    }
-
-    async function decodeGzippedBase64(b64: string): Promise<string> {
-        let binary = atob(b64);
-        let bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
-
-        let stream = new ReadableStream<Uint8Array>({
-            start(controller) {
-                controller.enqueue(bytes);
-                controller.close();
-            }
-        });
-
-        let decompressed = stream.pipeThrough(new DecompressionStream("gzip"));
-        let arrayBuffer = await new Response(decompressed).arrayBuffer();
-
-        let jsonText = new TextDecoder("utf-8").decode(arrayBuffer);
-        return jsonText;
     }
 
 
