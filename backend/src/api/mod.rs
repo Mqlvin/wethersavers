@@ -3,8 +3,11 @@ use std::{io::Write, sync::Arc};
 use axum::{Json, Router, extract::Path, routing::get};
 use flate2::{Compression, write::GzEncoder};
 use serde::Serialize;
+use tokio::task;
 
-use crate::wetherspoons::{cache::{get_cached_drinks_menu, get_cached_venues_encoded, has_valid_drinks_cache}, drinks::{Drink, get_drinks_menu}, get_drinks_menu_id, get_sales_int, get_venues};
+use crate::{api::stats::{StatsResponse, add_unique_blocking, get_count, increment_blocking, unique_count_blocking}, wetherspoons::{cache::{get_cached_drinks_menu, get_cached_venues_encoded, has_valid_drinks_cache}, drinks::{Drink, get_drinks_menu}, get_drinks_menu_id, get_sales_int, get_venues}};
+
+mod stats;
 
 #[derive(Serialize)]
 pub struct Response<T>
@@ -91,6 +94,15 @@ pub fn get_api_router() -> Router {
             };
             let base64 = base64::encode(&result);
 
+            // increment stats things async-ly
+            let _ = task::spawn_blocking(move || {
+                let _ = increment_blocking();
+                let _ = add_unique_blocking(&id.to_string());
+            });
+
             Json(Response::ok(base64))
+        }))
+        .route("/stats", get(|| async {
+            Json(Response::ok(StatsResponse { total_searches: get_count().await.unwrap_or(0), total_unique_venues: unique_count_blocking().unwrap_or(0) }))
         }))
 }
