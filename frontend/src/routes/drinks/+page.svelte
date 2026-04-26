@@ -104,7 +104,7 @@
 <div id="center-wrapper" class="center-container">
     <br>
     <h1 class="thick-shadow" style="font-size: 2.2em;">{venue ? venue.name : ""}</h1>
-    <a style="color: white;" href="/" on:click={() => { goto("/"); }}>Or search again...</a>
+    <a style="color: white; font-size: 0.95em; font-weight: 600;" href="/" on:click={() => { goto("/"); }}>Or search again...</a>
     <br>
 
     {#if drinksFetchError != null}
@@ -195,7 +195,15 @@
         padding: 0% 4%;
         
         /* this transition works in a couple to delay remove 'remove-bottom-radius' class */
-        transition: all 0.22s cubic-bezier(1, 0.00, 1, 0);
+        transition:
+            border-bottom-left-radius 0.22s cubic-bezier(1, 0.10, 1, 0.1),
+            border-bottom-right-radius 0.22s cubic-bezier(1, 0.10, 1, 0.1),
+            background-color 0.2s linear;
+    }
+
+    #filter-header:hover {
+        cursor: pointer;
+        background-color: #eee;
     }
 
     .remove-bottom-radius {
@@ -203,7 +211,10 @@
         border-bottom-right-radius: 0;
 
         /* this transition works in a couple to delay remove 'remove-bottom-radius' class */
-        transition: 0s !important;
+        transition:
+            border-bottom-left-radius 0s linear,
+            border-bottom-right-radius 0s linear,
+            background-color 0.2s linear !important;
     }
 
     #result-container {
