@@ -1,13 +1,15 @@
+import { SortMethod } from "./sorters";
+
 export interface FilterObject {
     maxPrice: number;
-    totalResults: number;
+    sortBy: SortMethod;
     excludeCategories: string[];
 }
 
 export function getDefaultFilterObject(): FilterObject {
     return {
         maxPrice: 10.00,
-        totalResults: 10,
+        sortBy: SortMethod.PricePerUnit,
         excludeCategories: []
     };
 }
@@ -15,8 +17,6 @@ export function getDefaultFilterObject(): FilterObject {
 export function applyFilter(drinkObjs: any, filters: FilterObject) {
     let drinkObjBuilder = [];
     for(let drinkObj of drinkObjs) {
-        if(drinkObjBuilder.length >= filters.totalResults) break;
-
         if(filters.excludeCategories.includes(drinkObj.category)) continue;
 
         let portion = drinkObj.portions[0];

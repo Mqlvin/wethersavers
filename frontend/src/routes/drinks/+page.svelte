@@ -4,10 +4,11 @@
     import Title from "$components/Title.svelte";
     import Dropdown from "$components/Dropdown.svelte";
     import MultiSelect from "svelte-multiselect";
-    import { API_URL } from "$lib/api";
+    import { API_URL, decodeGzippedBase64 } from "$lib/api";
     import { DirectRequest } from "$types/api";
     import { type FilterObject, getDefaultFilterObject, applyFilter } from "$types/filters";
     import { selectedVenue } from '$lib/venueStore.js';
+    import { Comparators, SortMethod } from "$types/sorters";
     const venue = $selectedVenue;
 
     let drinksData = $state<any | null>(null);
@@ -16,7 +17,11 @@
     let displayedDrinks = $state<any | null>(null);
     let drinkCategories = $state([]);
     let ignoreCategories = $state([]);
+    let isShowingAll = $state(false);
+    
+    let absoluteLowestPpu = $state(0.0);
 
+    // this fetches the drinks from the api
     async function getDrinks() {
         if(drinksData == null && drinksFetchError == null) {
             try {
@@ -36,24 +41,7 @@
         }
     }
 
-    async function decodeGzippedBase64(b64: string): Promise<string> {
-        let binary = atob(b64);
-        let bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
-
-        let stream = new ReadableStream<Uint8Array>({
-            start(controller) {
-                controller.enqueue(bytes);
-                controller.close();
-            }
-        });
-
-        let decompressed = stream.pipeThrough(new DecompressionStream("gzip"));
-        let arrayBuffer = await new Response(decompressed).arrayBuffer();
-
-        let jsonText = new TextDecoder("utf-8").decode(arrayBuffer);
-        return jsonText;
-    }
-
+    // this post-processes the api fetch, returning the list of drinks as an array
     function postProcessDrinks(json: any): any {
         return json.map(drink => {
             let ppuGroups = drink.portions.reduce((acc, portion) => {
@@ -79,6 +67,10 @@
         return Object.keys(map);
     }
 
+    function sortDrinksOrder(drinksData: any[], sortMethod: SortMethod): any[] {
+        return drinksData.toSorted(Comparators[sortMethod]);
+    }
+
     onMount(async () => {
         if(venue == null) {
             drinksFetchError = "Error, please re-search your venue"; 
@@ -86,6 +78,7 @@
         }
 
         await getDrinks();
+        absoluteLowestPpu = Math.min.apply(Math, drinksData.map((o) => { return o.portions[0].ppu; }));
         drinkCategories = getAllCategories(drinksData);
     });
 
@@ -96,7 +89,8 @@
     $effect(() => {
         filterObj.excludeCategories = ignoreCategories;
         if(drinksData != null && filterObj != null && drinksFetchError == null) {
-            displayedDrinks = applyFilter(drinksData, filterObj);
+            displayedDrinks = applyFilter(sortDrinksOrder(drinksData, filterObj.sortMethod), filterObj);
+            isShowingAll = false;
         }
     });
 
@@ -122,8 +116,8 @@
                     <input type="range" min="0.0" max="10" step="0.1" bind:value={filterObj.maxPrice}>
                 </div>
                 <div class="filter">
-                    <label>Total results</label>
-                    <Dropdown options={["5", "10", "15", "20", "All"]} defaultIndex={1} bind:bindValue={filterObj.totalResults} />
+                    <label>Sort By</label>
+                    <Dropdown options={[SortMethod.Strength, SortMethod.PricePerUnit]} defaultIndex={1} bind:bindValue={filterObj.sortMethod} />
                 </div>
                 <div class="filter">
                     {#if drinkCategories.length != 0}
@@ -137,9 +131,9 @@
 
             <div id="result-container" class="center-container">
                 {#if displayedDrinks != null && displayedDrinks.length > 0}
-                    {#each displayedDrinks as drink, idx}
-                        {@const relativePpu = idx == 0 ? 0 : (((drink.portions[0].ppu/displayedDrinks[0].portions[0].ppu) - 1) * 100)}
-                        {@const relativePpuColour = relativePpu <= 50 ? "" : relativePpu <= 80 ? "low-increase" : relativePpu <= 110 ? "med-increase" : "high-increase"}
+                    {#each displayedDrinks.slice(0, isShowingAll ? displayedDrinks.length : 10) as drink, idx}
+                        {@const relativePpu = (((drink.portions[0].ppu/absoluteLowestPpu) - 1) * 100)}
+                        {@const relativePpuColour = relativePpu < 0 ? "decrease" : relativePpu <= 50 ? "" : relativePpu <= 80 ? "low-increase" : relativePpu <= 110 ? "med-increase" : "high-increase"}
                         <div class="result box">
                             <div style="width: 80%; display: flex; flex-direction: column; align-items: left;">
                                 {#if drink.name[0] == "["}
@@ -156,12 +150,17 @@
                             </div>
                             <div style="display: flex; flex-direction: column;">
                                 <p class="ppu">{drink.medium}</p>
-                                <p style="margin-top: auto;" class="plus-price {relativePpuColour}">+{relativePpu.toFixed(0)}%</p>
+                                <p style="margin-top: auto;" class="plus-price {relativePpuColour}">{relativePpu >= 0 ? "+" : ""}{relativePpu.toFixed(0)}%</p>
                                 <p class="ppu {relativePpuColour}">£{drink.portions[0].ppu.toFixed(2)}/u</p>
                             </div>
                         </div>
                     {/each}
-                    <br><br>
+                    <br>
+                    {#if !isShowingAll}
+                        <button class="show-all box" type="submit" on:click={() => {isShowingAll = true;}}>Show All</button>
+                        <br>
+                    {/if}
+                    <br>
                 {:else}
                     <p>No results found</p>
                 {/if}
@@ -292,6 +291,11 @@
         display: none;
     }
 
+    .decrease {
+        color: #0c7e0c;
+        opacity: 0.60;
+    }
+
     .low-increase {
         color: #bf1717;
         opacity: 0.60;
@@ -306,5 +310,18 @@
         color: #9a0000;
         opacity: 1;
         font-weight: bold;
+    }
+
+    .show-all {
+        padding: 12px 30px;
+        font-weight: 600;
+
+        background-color: white;
+        transition: 0.2s;
+    }
+
+    .show-all:hover {
+        cursor: pointer;
+        background-color: #eee;
     }
 </style>
