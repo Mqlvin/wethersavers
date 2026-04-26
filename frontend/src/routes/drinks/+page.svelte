@@ -87,7 +87,6 @@
         await getDrinks();
         absoluteLowestPpu = Math.min.apply(Math, drinksData.map((o) => { return o.portions[0].ppu; }));
         drinkCategories = getAllCategories(drinksData);
-        console.log(drinksData)
     });
 
 

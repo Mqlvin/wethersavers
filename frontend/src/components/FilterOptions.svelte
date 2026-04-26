@@ -3,6 +3,19 @@
     import { type FilterObject, getDefaultFilterObject, applyFilter } from "$types/filters";
     import Dropdown from "$components/Dropdown.svelte";
     import MultiSelect from "svelte-multiselect";
+    import { onMount } from 'svelte';
+
+    // use this to get rid of the annoying keyboard inputs on the phone
+    onMount(async () => {
+        let inputs = [];
+        while(inputs.length == 0) {
+            inputs = document.querySelectorAll('.multiselect input');
+            await new Promise((r) => setTimeout(r, 20)); // wait until this is in dom, remove items
+        }
+        for(let i = 0; i < inputs.length; i++) {
+            inputs[i].remove();
+        }
+    });
 
     let { 
         filterObj = $bindable(), 
@@ -60,5 +73,9 @@
         font-weight: 600;
 
         text-align: left;
+    }
+
+    :global(.multiselect) {
+
     }
 </style>
