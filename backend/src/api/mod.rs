@@ -64,10 +64,18 @@ pub fn get_api_router() -> Router {
                     Err(err) => { return Json(Response::err(err.to_string())); }
                 };
 
-                match get_cached_drinks_menu(&id, &sales_id, &drinks_menu_id).await {
+                let fetched_menu = match get_cached_drinks_menu(&id, &sales_id, &drinks_menu_id).await {
                     Ok(val) => val,
                     Err(err) => { return Json(Response::err(err.to_string())); }
-                }
+                };
+
+                // increment stats things async-ly
+                let _ = task::spawn_blocking(move || {
+                    let _ = increment_blocking();
+                    let _ = add_unique_blocking(&id.to_string());
+                });
+
+                fetched_menu
             } else {
                 match get_cached_drinks_menu(&id, &0, &0).await {
                     Ok(val) => val,
@@ -93,12 +101,6 @@ pub fn get_api_router() -> Router {
                 Err(err) => { return Json(Response::err(format!("Failed to write bytes to GZIP compressor: {}", err.to_string()))); } 
             };
             let base64 = base64::encode(&result);
-
-            // increment stats things async-ly
-            let _ = task::spawn_blocking(move || {
-                let _ = increment_blocking();
-                let _ = add_unique_blocking(&id.to_string());
-            });
 
             Json(Response::ok(base64))
         }))
