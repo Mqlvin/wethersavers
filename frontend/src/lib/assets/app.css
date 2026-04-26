@@ -16,8 +16,12 @@ body {
     min-height: 28px;
     min-width: 28px;
 
-    border: 1px solid white;
+    border: 1px solid #eee;
     border-radius: 7px;
+
+    box-shadow:
+        0px 4px 16px -11px rgba(0, 0, 0, 0.36),
+        0px 8px 8px -8px rgba(0, 0, 0, 0.05);
 }
 
 .center-container {
