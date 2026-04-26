@@ -31,7 +31,7 @@
     </div>
     <div class="filter">
         <label>Sort By</label>
-        <Dropdown options={[SortMethod.PricePerUnitAscending, SortMethod.PricePerUnitDescending, SortMethod.Strength, SortMethod.PureEthanol]} defaultIndex={0} bind:bindValue={filterObj.sortMethod} />
+        <Dropdown options={[SortMethod.PricePerUnitAscending, SortMethod.PricePerUnitDescending, SortMethod.Strength, SortMethod.TotalEthanol]} defaultIndex={0} bind:bindValue={filterObj.sortMethod} />
     </div>
     <div class="filter">
         {#if drinkCategories.length != 0}
@@ -75,7 +75,18 @@
         text-align: left;
     }
 
-    :global(.multiselect) {
+    :global(.options) {
+        border: 1px solid #d3d3d3;
+        max-height: 400px;
 
+        box-shadow:
+            0px 4px 16px -11px rgba(0, 0, 0, 0.36),
+            0px 8px 8px -5px rgba(0, 0, 0, 0.05);
     }
+
+    :global(.options li, .selected li) {
+        font-size: 0.9em;
+        opacity: 0.9;
+    }
+
 </style>
