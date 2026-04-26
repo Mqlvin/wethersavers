@@ -9,7 +9,7 @@ export interface FilterObject {
 export function getDefaultFilterObject(): FilterObject {
     return {
         maxPrice: 10.00,
-        sortBy: SortMethod.PricePerUnit,
+        sortBy: SortMethod.PricePerUnitAscending,
         excludeCategories: []
     };
 }

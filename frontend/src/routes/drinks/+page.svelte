@@ -9,6 +9,9 @@
     import { type FilterObject, getDefaultFilterObject, applyFilter } from "$types/filters";
     import { selectedVenue } from '$lib/venueStore.js';
     import { Comparators, SortMethod } from "$types/sorters";
+    import { CollapsibleCard } from 'svelte-collapsible'
+    import FilterOptions from "$components/FilterOptions.svelte";
+
     const venue = $selectedVenue;
 
     let drinksData = $state<any | null>(null);
@@ -18,8 +21,12 @@
     let drinkCategories = $state([]);
     let ignoreCategories = $state([]);
     let isShowingAll = $state(false);
+
+    let filterObj = $state<FilterObject>(getDefaultFilterObject());
+    let filterMenuOpen = $state(false);
     
     let absoluteLowestPpu = $state(0.0);
+
 
     // this fetches the drinks from the api
     async function getDrinks() {
@@ -80,11 +87,9 @@
         await getDrinks();
         absoluteLowestPpu = Math.min.apply(Math, drinksData.map((o) => { return o.portions[0].ppu; }));
         drinkCategories = getAllCategories(drinksData);
+        console.log(drinksData)
     });
 
-
-    /* filters */
-    let filterObj = $state<FilterObject>(getDefaultFilterObject());
 
     $effect(() => {
         filterObj.excludeCategories = ignoreCategories;
@@ -110,22 +115,15 @@
 
         <div id="container" class="center-container">
 
-            <div id="filter-container" class="center-container box">
-                <div class="filter">
-                    <label>Max Price £{(Math.round(filterObj.maxPrice * 100) / 100).toFixed(2)}</label>
-                    <input type="range" min="0.0" max="10" step="0.1" bind:value={filterObj.maxPrice}>
+            <CollapsibleCard bind:open={filterMenuOpen} class="filter-header">
+                <div slot="header" id="filter-header" class="center-container box" class:remove-bottom-radius={filterMenuOpen}>
+                    <h3>Filters</h3>
+                    <svg style="opacity: {filterMenuOpen ? "0.8" : "0.3"}; transition: 0.2s;" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" fill-rule="evenodd"><path d="m12.593 23.258l-.011.002l-.071.035l-.02.004l-.014-.004l-.071-.035q-.016-.005-.024.005l-.004.01l-.017.428l.005.02l.01.013l.104.074l.015.004l.012-.004l.104-.074l.012-.016l.004-.017l-.017-.427q-.004-.016-.017-.018m.265-.113l-.013.002l-.185.093l-.01.01l-.003.011l.018.43l.005.012l.008.007l.201.093q.019.005.029-.008l.004-.014l-.034-.614q-.005-.018-.02-.022m-.715.002a.02.02 0 0 0-.027.006l-.006.014l-.034.614q.001.018.017.024l.015-.002l.201-.093l.01-.008l.004-.011l.017-.43l-.003-.012l-.01-.01z"/><path fill="currentColor" d="M3 4.5A1.5 1.5 0 0 1 4.5 3h15A1.5 1.5 0 0 1 21 4.5v2.086A2 2 0 0 1 20.414 8L15 13.414v7.424a1.1 1.1 0 0 1-1.592.984l-3.717-1.858A1.25 1.25 0 0 1 9 18.846v-5.432L3.586 8A2 2 0 0 1 3 6.586z"/></g></svg>
                 </div>
-                <div class="filter">
-                    <label>Sort By</label>
-                    <Dropdown options={[SortMethod.Strength, SortMethod.PricePerUnit]} defaultIndex={1} bind:bindValue={filterObj.sortMethod} />
+                <div slot="body" id="filter-body">
+                    <FilterOptions bind:filterObj={filterObj} drinkCategories={drinkCategories} bind:ignoreCategories={ignoreCategories} />
                 </div>
-                <div class="filter">
-                    {#if drinkCategories.length != 0}
-                        <label>Exclude</label>
-                        <MultiSelect bind:selected={ignoreCategories} options={drinkCategories} />
-                    {/if}
-                </div>
-            </div>
+            </CollapsibleCard>
 
             <br>
 
@@ -133,7 +131,7 @@
                 {#if displayedDrinks != null && displayedDrinks.length > 0}
                     {#each displayedDrinks.slice(0, isShowingAll ? displayedDrinks.length : 10) as drink, idx}
                         {@const relativePpu = (((drink.portions[0].ppu/absoluteLowestPpu) - 1) * 100)}
-                        {@const relativePpuColour = relativePpu < 0 ? "decrease" : relativePpu <= 50 ? "" : relativePpu <= 80 ? "low-increase" : relativePpu <= 110 ? "med-increase" : "high-increase"}
+                        {@const relativePpuColour = relativePpu <= 50 ? "" : relativePpu <= 80 ? "low-increase" : relativePpu <= 110 ? "med-increase" : "high-increase"}
                         <div class="result box">
                             <div style="width: 80%; display: flex; flex-direction: column; align-items: left;">
                                 {#if drink.name[0] == "["}
@@ -150,13 +148,13 @@
                             </div>
                             <div style="display: flex; flex-direction: column;">
                                 <p class="ppu">{drink.medium}</p>
-                                <p style="margin-top: auto;" class="plus-price {relativePpuColour}">{relativePpu >= 0 ? "+" : ""}{relativePpu.toFixed(0)}%</p>
+                                <p style="margin-top: auto;" class="plus-price {relativePpuColour}">+{relativePpu.toFixed(0)}%</p>
                                 <p class="ppu {relativePpuColour}">£{drink.portions[0].ppu.toFixed(2)}/u</p>
                             </div>
                         </div>
                     {/each}
                     <br>
-                    {#if !isShowingAll}
+                    {#if !isShowingAll && displayedDrinks.length > 10}
                         <button class="show-all box" type="submit" on:click={() => {isShowingAll = true;}}>Show All</button>
                         <br>
                     {/if}
@@ -186,27 +184,26 @@
         max-width: 600px;
     }
 
-    #filter-container {
-        width: 100%;
-        max-width: 400px;
-        justify-content: center;
+    #filter-header {
+        min-width: 200px;
+        background-color: white;
 
-        padding: 10px;
+        height: 50px;
+        flex-direction: row;
+        justify-content: space-between;
         box-sizing: border-box;
-
-        background-color: #eee;
-
-        color: black;
+        padding: 0% 4%;
+        
+        /* this transition works in a couple to delay remove 'remove-bottom-radius' class */
+        transition: all 0.22s cubic-bezier(1, 0.00, 1, 0);
     }
 
-    .filter {
-        margin: 5px 0px 5px 0px;
-        width: 100%;
+    .remove-bottom-radius {
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
 
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        align-items: center;
+        /* this transition works in a couple to delay remove 'remove-bottom-radius' class */
+        transition: 0s !important;
     }
 
     #result-container {
@@ -287,13 +284,14 @@
         min-width: 200px;
     }
 
-    :global(.expand-icon) {
-        display: none;
+    /* this should be kept same as #result-container */
+    :global(.card, .card-header) {
+        width: 100%;
+        max-width: 400px;
     }
 
-    .decrease {
-        color: #0c7e0c;
-        opacity: 0.60;
+    :global(.expand-icon) {
+        display: none;
     }
 
     .low-increase {

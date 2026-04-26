@@ -1,0 +1,64 @@
+<script lang="ts">
+    import { Comparators, SortMethod } from "$types/sorters";
+    import { type FilterObject, getDefaultFilterObject, applyFilter } from "$types/filters";
+    import Dropdown from "$components/Dropdown.svelte";
+    import MultiSelect from "svelte-multiselect";
+
+    let { 
+        filterObj = $bindable(), 
+        drinkCategories, 
+        ignoreCategories = $bindable(), 
+    } = $props();
+</script>
+
+<div id="filter-container" class="center-container box">
+    <div class="filter">
+        <label>Max Price: £{(Math.round(filterObj.maxPrice * 100) / 100).toFixed(2)}</label>
+        <input type="range" min="0.0" max="10" step="0.1" bind:value={filterObj.maxPrice}>
+    </div>
+    <div class="filter">
+        <label>Sort By</label>
+        <Dropdown options={[SortMethod.PricePerUnitAscending, SortMethod.PricePerUnitDescending, SortMethod.Strength, SortMethod.PureEthanol]} defaultIndex={0} bind:bindValue={filterObj.sortMethod} />
+    </div>
+    <div class="filter">
+        {#if drinkCategories.length != 0}
+            <label>Exclude</label>
+            <MultiSelect bind:selected={ignoreCategories} options={drinkCategories} />
+        {/if}
+    </div>
+</div>
+
+
+<style>
+    #filter-container {
+        width: 100%;
+        max-width: 400px;
+        justify-content: center;
+
+        padding: 10px;
+        box-sizing: border-box;
+
+        color: black;
+
+        background-color: #eee;
+        border-top-left-radius: 0px;
+        border-top-right-radius: 0px;
+    }
+
+    .filter {
+        margin: 5px 0px 5px 0px;
+        width: 70%;
+
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    label {
+        font-size: 0.9em;
+        font-weight: 600;
+
+        text-align: left;
+    }
+</style>
