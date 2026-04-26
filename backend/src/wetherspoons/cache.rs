@@ -1,13 +1,12 @@
 use std::{sync::{Arc}, time::{Duration, SystemTime}};
 
 use dashmap::DashMap;
-use flate2::{Compression, bufread::GzEncoder};
 use once_cell::{sync::Lazy};
 use tokio::sync::RwLock;
 
 use crate::wetherspoons::{drinks::*, error::WetherspoonsError, get_venues};
 
-const CACHE_LENGTH_MINS: u64 = 60;
+const CACHE_LENGTH_SECS: u64 = 60 * 60;
 
 /*
 * DRINKS CACHE 
@@ -24,7 +23,7 @@ static DRINKS_CACHE: Lazy<DashMap<usize, DrinksCacheEntry>> = Lazy::new(|| {
 
 // either 1 hour from now, or 9am british time (whichever is sooner)
 fn compute_next_drinks_refresh(last_fetched: SystemTime) -> SystemTime {
-    let next_by_cache_life = last_fetched + Duration::from_mins(CACHE_LENGTH_MINS);
+    let next_by_cache_life = last_fetched + Duration::from_secs(CACHE_LENGTH_SECS);
     next_by_cache_life
 }
 
@@ -76,7 +75,7 @@ struct VenueCacheEntry {
 }
 
 fn compute_next_venue_refresh(last_fetched: SystemTime) -> SystemTime {
-    let next_by_cache_life = last_fetched + Duration::from_mins(CACHE_LENGTH_MINS);
+    let next_by_cache_life = last_fetched + Duration::from_secs(CACHE_LENGTH_SECS);
     next_by_cache_life
 }
 
