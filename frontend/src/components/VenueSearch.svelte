@@ -72,7 +72,7 @@
 
 <div id="container" class="center-container">
     <input
-        placeholder="Find a venue..."
+        placeholder="Type a venue or location..."
         type="text"
         maxlength="50"
         class="box venue-search {searchQuery != "" ? "no-round-bottom" : ""}"

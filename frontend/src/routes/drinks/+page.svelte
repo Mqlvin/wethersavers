@@ -251,7 +251,6 @@
         color: #fff;
 
         padding: 1px 5px 1px 5px;
-        margin-right: 2px;
 
         border-radius: 4px;
         background-color: #aa581d;
