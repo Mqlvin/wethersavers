@@ -103,7 +103,7 @@
 
 <div id="center-wrapper" class="center-container">
     <br>
-    <h1 class="thick-shadow">{venue ? venue.name : ""}</h1>
+    <h1 class="thick-shadow" style="font-size: 2.2em;">{venue ? venue.name : ""}</h1>
     <a style="color: white;" href="/" on:click={() => { goto("/"); }}>Or search again...</a>
     <br>
 
