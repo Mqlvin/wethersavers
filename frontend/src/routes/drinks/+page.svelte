@@ -17,11 +17,6 @@
     let drinkCategories = $state([]);
     let ignoreCategories = $state([]);
 
-    if(venue == null) {
-        drinksFetchError = "Error, please re-search your venue"; 
-        goto("/");
-    }
-
     async function getDrinks() {
         if(drinksData == null && drinksFetchError == null) {
             try {
@@ -85,6 +80,11 @@
     }
 
     onMount(async () => {
+        if(venue == null) {
+            drinksFetchError = "Error, please re-search your venue"; 
+            goto("/");
+        }
+
         await getDrinks();
         drinkCategories = getAllCategories(drinksData);
     });
