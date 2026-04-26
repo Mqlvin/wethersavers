@@ -370,6 +370,21 @@ fn parse_portions_obj(portion_obj: &Vec<Value>, item_strength: f32, global_descr
     let mut drink_medium: Option<String> = None;
 
     for portion in portion_obj {
+        if price_override.is_some() {
+            if let Some(is_default_val) = portion.get("isDefault") {
+                if let Some(is_default) = is_default_val.as_bool() {
+                    if !is_default {
+                        continue;
+                    }
+                    // it is default here, in which case just move on
+                } else {
+                    continue;
+                }
+            } else {
+                continue;
+            }
+        }
+
         let value_obj = match portion.get("value") { 
             Some(val) => val,
             None => { continue; }
