@@ -11,6 +11,7 @@
     import { Comparators, SortMethod } from "$types/sorters";
     import { CollapsibleCard } from 'svelte-collapsible'
     import FilterOptions from "$components/FilterOptions.svelte";
+    import { TwoSeventyRingWithBg } from "svelte-svg-spinners";
 
     const venue = $selectedVenue;
 
@@ -109,6 +110,8 @@
     {#if drinksFetchError != null}
         <p>Error fetching drink data:<br>{drinksFetchError}</p>
     {:else if drinksData == null}
+        <TwoSeventyRingWithBg dur={0.8} size={"3em"}/>
+        <br>
         <p>Fetching drink data...</p>
     {:else} <!-- here we do have drink data -->
 
