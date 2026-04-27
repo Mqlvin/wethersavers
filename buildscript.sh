@@ -4,7 +4,7 @@ set -e
 
 echo '[wethersavers] building static frontend files'
 cd ./frontend
-npm i
+npm i --legacy-peer-deps
 npm run build
 echo '[wethersavers] frontend built'
 
