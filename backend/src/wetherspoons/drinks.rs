@@ -38,9 +38,6 @@ static DRINK_CATEGORIES: Lazy<Vec<&str>> = Lazy::new(|| {
         "Tequila",
         "Liqueurs, cognac and brandy ",
         "Bombs and shots",
-        "2 for £6.50",
-        "3 for £5.10",
-        "4 for £5",
     ]
 });
 
